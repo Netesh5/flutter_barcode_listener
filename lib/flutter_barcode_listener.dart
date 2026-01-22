@@ -27,17 +27,24 @@ class BarcodeKeyboardListener extends StatefulWidget {
 }
 
 class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
-  final StringBuffer _buffer = StringBuffer();
+  final List<String> _buffer = [];
 
-  int? _lastCharTime;
+  DateTime? _lastCharTime;
+  String? _lastBarcode;
+  DateTime? _lastBarcodeTime;
 
   bool _shiftPressed = false;
   bool _handlerRegistered = false;
   bool _isCompletingScan = false;
-  int _lastBarcodeHash = 0;
-  int _lastBarcodeTimeMs = 0;
+  DateTime? _lastEnterKeyTime;
 
-  static const int _sameBarcodeCooldownMs = 25;
+  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 100);
+  static const Duration _enterKeyDebounce = Duration(milliseconds: 100);
+
+  // Global tracking to prevent duplicate scans across all instances
+  static String? _globalLastBarcode;
+  static DateTime? _globalLastBarcodeTime;
+  static bool _globalIsScanning = false;
 
   @override
   void initState() {
@@ -55,6 +62,13 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     if (!validEvent) return false;
 
     if (event.logicalKey == LogicalKeyboardKey.enter) {
+      final now = DateTime.now();
+      // Debounce Enter key to prevent duplicate processing
+      if (_lastEnterKeyTime != null &&
+          now.difference(_lastEnterKeyTime!) < _enterKeyDebounce) {
+        return false;
+      }
+      _lastEnterKeyTime = now;
       _completeScan();
       return false;
     }
@@ -68,16 +82,14 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     final keyId = event.logicalKey.keyId;
     if (keyId < 0x20 || keyId > 0x7E) return false;
 
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
 
-    if (_lastCharTime != null) {
-      final timeDiff = nowMs - _lastCharTime!;
-      if (timeDiff > widget.bufferDuration.inMilliseconds) {
-        _buffer.clear();
-      }
+    if (_lastCharTime != null &&
+        now.difference(_lastCharTime!) > widget.bufferDuration) {
+      _buffer.clear();
     }
 
-    _lastCharTime = nowMs;
+    _lastCharTime = now;
 
     String char = String.fromCharCode(keyId);
     if (_shiftPressed && widget.caseSensitive) {
@@ -85,40 +97,59 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     }
 
     _shiftPressed = false;
-    _buffer.write(char);
+    _buffer.add(char);
 
     return false;
   }
 
   void _completeScan() {
-    if (_buffer.length == 0 || _isCompletingScan) return;
+    // Early return if already processing or buffer is empty
+    if (_isCompletingScan || _buffer.isEmpty) return;
 
+    // Global check - prevent any instance from scanning if another is already scanning
+    if (_globalIsScanning) return;
+
+    // Set flags immediately to prevent concurrent execution
     _isCompletingScan = true;
+    _globalIsScanning = true;
 
-    // Capture barcode and clear buffer immediately
-    final barcode = _buffer.toString();
+    // Capture barcode and clear buffer immediately to prevent re-processing
+    final barcode = _buffer.join();
     _buffer.clear();
     _lastCharTime = null;
 
-    // Fast duplicate check using hash and milliseconds
-    final barcodeHash = barcode.hashCode;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
 
-    if (barcodeHash == _lastBarcodeHash &&
-        (nowMs - _lastBarcodeTimeMs) < _sameBarcodeCooldownMs) {
+    // 🔒 FINAL GUARANTEE - Prevent duplicate scans of the same barcode (instance-level)
+    if (_lastBarcode == barcode &&
+        _lastBarcodeTime != null &&
+        now.difference(_lastBarcodeTime!) < _sameBarcodeCooldown) {
       _isCompletingScan = false;
+      _globalIsScanning = false;
       return;
     }
 
-    // Update tracking before callback
-    _lastBarcodeHash = barcodeHash;
-    _lastBarcodeTimeMs = nowMs;
+    // 🔒 GLOBAL GUARANTEE - Prevent duplicate scans across all instances
+    if (_globalLastBarcode == barcode &&
+        _globalLastBarcodeTime != null &&
+        now.difference(_globalLastBarcodeTime!) < _sameBarcodeCooldown) {
+      _isCompletingScan = false;
+      _globalIsScanning = false;
+      return;
+    }
 
-    // Call callback immediately for fastest response
+    // Update tracking before callback to prevent race conditions
+    _lastBarcode = barcode;
+    _lastBarcodeTime = now;
+    _globalLastBarcode = barcode;
+    _globalLastBarcodeTime = now;
+
+    // Call the callback
     widget.onBarcodeScanned(barcode);
 
-    // Reset flag immediately
+    // Reset flags after callback completes
     _isCompletingScan = false;
+    _globalIsScanning = false;
   }
 
   @override
