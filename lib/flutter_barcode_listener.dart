@@ -16,10 +16,10 @@ class BarcodeKeyboardListener extends StatefulWidget {
     Key? key,
     required this.child,
     required this.onBarcodeScanned,
+    this.bufferDuration = const Duration(milliseconds: 100),
     this.useKeyDownEvent = false,
-    this.bufferDuration = const Duration(milliseconds: 300),
     this.caseSensitive = false,
-  }) : super(key: key);
+  });
 
   @override
   State<BarcodeKeyboardListener> createState() =>
@@ -28,12 +28,14 @@ class BarcodeKeyboardListener extends StatefulWidget {
 
 class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   final List<String> _buffer = [];
+
   DateTime? _lastCharTime;
-  DateTime? _lastScanTime;
+  String? _lastBarcode;
+  DateTime? _lastBarcodeTime;
 
   bool _shiftPressed = false;
 
-  static const Duration _scanDebounce = Duration(milliseconds: 300);
+  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 800);
 
   @override
   void initState() {
@@ -42,32 +44,27 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   }
 
   bool _handleKey(KeyEvent event) {
-    final isValidEvent =
+    final validEvent =
         widget.useKeyDownEvent ? event is KeyDownEvent : event is KeyUpEvent;
 
-    if (!isValidEvent) return false;
+    if (!validEvent) return false;
 
-    // 🔒 SCAN COMPLETE (ENTER)
     if (event.logicalKey == LogicalKeyboardKey.enter) {
       _completeScan();
       return false;
     }
 
-    // SHIFT
     if (event.logicalKey == LogicalKeyboardKey.shiftLeft ||
         event.logicalKey == LogicalKeyboardKey.shiftRight) {
       _shiftPressed = true;
       return false;
     }
 
-    final int keyId = event.logicalKey.keyId;
-
-    // Printable ASCII only
+    final keyId = event.logicalKey.keyId;
     if (keyId < 0x20 || keyId > 0x7E) return false;
 
     final now = DateTime.now();
 
-    // Reset buffer if typing too slow (human input)
     if (_lastCharTime != null &&
         now.difference(_lastCharTime!) > widget.bufferDuration) {
       _buffer.clear();
@@ -79,24 +76,32 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     if (_shiftPressed && widget.caseSensitive) {
       char = char.toUpperCase();
     }
-    _shiftPressed = false;
 
+    _shiftPressed = false;
     _buffer.add(char);
+
     return false;
   }
 
   void _completeScan() {
+    if (_buffer.isEmpty) return;
+
+    final barcode = _buffer.join();
     final now = DateTime.now();
 
-    if (_lastScanTime != null &&
-        now.difference(_lastScanTime!) < _scanDebounce) {
+    // 🔒 FINAL GUARANTEE
+    if (_lastBarcode == barcode &&
+        _lastBarcodeTime != null &&
+        now.difference(_lastBarcodeTime!) < _sameBarcodeCooldown) {
+      _buffer.clear();
+      _lastCharTime = null;
       return;
     }
 
-    if (_buffer.isNotEmpty) {
-      widget.onBarcodeScanned(_buffer.join());
-      _lastScanTime = now;
-    }
+    _lastBarcode = barcode;
+    _lastBarcodeTime = now;
+
+    widget.onBarcodeScanned(barcode);
 
     _buffer.clear();
     _lastCharTime = null;
