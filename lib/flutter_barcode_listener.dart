@@ -29,15 +29,15 @@ class BarcodeKeyboardListener extends StatefulWidget {
 class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   final StringBuffer _buffer = StringBuffer();
 
-  DateTime? _lastCharTime;
-  String? _lastBarcode;
-  DateTime? _lastBarcodeTime;
+  int? _lastCharTime;
 
   bool _shiftPressed = false;
   bool _handlerRegistered = false;
   bool _isCompletingScan = false;
+  int _lastBarcodeHash = 0;
+  int _lastBarcodeTimeMs = 0;
 
-  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 50);
+  static const int _sameBarcodeCooldownMs = 10;
 
   @override
   void initState() {
@@ -68,14 +68,16 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     final keyId = event.logicalKey.keyId;
     if (keyId < 0x20 || keyId > 0x7E) return false;
 
-    final now = DateTime.now();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    if (_lastCharTime != null &&
-        now.difference(_lastCharTime!) > widget.bufferDuration) {
-      _buffer.clear();
+    if (_lastCharTime != null) {
+      final timeDiff = nowMs - _lastCharTime!;
+      if (timeDiff > widget.bufferDuration.inMilliseconds) {
+        _buffer.clear();
+      }
     }
 
-    _lastCharTime = now;
+    _lastCharTime = nowMs;
 
     String char = String.fromCharCode(keyId);
     if (_shiftPressed && widget.caseSensitive) {
@@ -98,24 +100,24 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     _buffer.clear();
     _lastCharTime = null;
 
-    final now = DateTime.now();
+    // Fast duplicate check using hash and milliseconds
+    final barcodeHash = barcode.hashCode;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // 🔒 FINAL GUARANTEE - Quick check to prevent duplicates
-    if (_lastBarcode == barcode &&
-        _lastBarcodeTime != null &&
-        now.difference(_lastBarcodeTime!) < _sameBarcodeCooldown) {
+    if (barcodeHash == _lastBarcodeHash &&
+        (nowMs - _lastBarcodeTimeMs) < _sameBarcodeCooldownMs) {
       _isCompletingScan = false;
       return;
     }
 
     // Update tracking before callback
-    _lastBarcode = barcode;
-    _lastBarcodeTime = now;
+    _lastBarcodeHash = barcodeHash;
+    _lastBarcodeTimeMs = nowMs;
 
-    // Call callback
+    // Call callback immediately for fastest response
     widget.onBarcodeScanned(barcode);
 
-    // Reset flag
+    // Reset flag immediately
     _isCompletingScan = false;
   }
 
