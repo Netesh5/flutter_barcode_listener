@@ -34,13 +34,18 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   DateTime? _lastBarcodeTime;
 
   bool _shiftPressed = false;
+  bool _handlerRegistered = false;
+  bool _isCompletingScan = false;
 
   static const Duration _sameBarcodeCooldown = Duration(milliseconds: 800);
 
   @override
   void initState() {
     super.initState();
-    HardwareKeyboard.instance.addHandler(_handleKey);
+    if (!_handlerRegistered) {
+      HardwareKeyboard.instance.addHandler(_handleKey);
+      _handlerRegistered = true;
+    }
   }
 
   bool _handleKey(KeyEvent event) {
@@ -84,7 +89,9 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   }
 
   void _completeScan() {
-    if (_buffer.isEmpty) return;
+    if (_buffer.isEmpty || _isCompletingScan) return;
+
+    _isCompletingScan = true;
 
     final barcode = _buffer.join();
     final now = DateTime.now();
@@ -95,6 +102,7 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
         now.difference(_lastBarcodeTime!) < _sameBarcodeCooldown) {
       _buffer.clear();
       _lastCharTime = null;
+      _isCompletingScan = false;
       return;
     }
 
@@ -105,6 +113,7 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
 
     _buffer.clear();
     _lastCharTime = null;
+    _isCompletingScan = false;
   }
 
   @override
@@ -112,7 +121,10 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKey);
+    if (_handlerRegistered) {
+      HardwareKeyboard.instance.removeHandler(_handleKey);
+      _handlerRegistered = false;
+    }
     super.dispose();
   }
 }
