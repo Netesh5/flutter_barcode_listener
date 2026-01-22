@@ -17,7 +17,7 @@ class BarcodeKeyboardListener extends StatefulWidget {
     required this.child,
     required this.onBarcodeScanned,
     this.useKeyDownEvent = false,
-    this.bufferDuration = const Duration(milliseconds: 100),
+    this.bufferDuration = const Duration(milliseconds: 300),
     this.caseSensitive = false,
   }) : super(key: key);
 
