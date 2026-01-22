@@ -27,7 +27,7 @@ class BarcodeKeyboardListener extends StatefulWidget {
 }
 
 class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
-  final List<String> _buffer = [];
+  final StringBuffer _buffer = StringBuffer();
 
   DateTime? _lastCharTime;
   String? _lastBarcode;
@@ -37,7 +37,7 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   bool _handlerRegistered = false;
   bool _isCompletingScan = false;
 
-  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 200);
+  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 50);
 
   @override
   void initState() {
@@ -83,36 +83,39 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
     }
 
     _shiftPressed = false;
-    _buffer.add(char);
+    _buffer.write(char);
 
     return false;
   }
 
   void _completeScan() {
-    if (_buffer.isEmpty || _isCompletingScan) return;
+    if (_buffer.length == 0 || _isCompletingScan) return;
 
     _isCompletingScan = true;
 
-    final barcode = _buffer.join();
+    // Capture barcode and clear buffer immediately
+    final barcode = _buffer.toString();
+    _buffer.clear();
+    _lastCharTime = null;
+
     final now = DateTime.now();
 
-    // 🔒 FINAL GUARANTEE
+    // 🔒 FINAL GUARANTEE - Quick check to prevent duplicates
     if (_lastBarcode == barcode &&
         _lastBarcodeTime != null &&
         now.difference(_lastBarcodeTime!) < _sameBarcodeCooldown) {
-      _buffer.clear();
-      _lastCharTime = null;
       _isCompletingScan = false;
       return;
     }
 
+    // Update tracking before callback
     _lastBarcode = barcode;
     _lastBarcodeTime = now;
 
+    // Call callback
     widget.onBarcodeScanned(barcode);
 
-    _buffer.clear();
-    _lastCharTime = null;
+    // Reset flag
     _isCompletingScan = false;
   }
 
