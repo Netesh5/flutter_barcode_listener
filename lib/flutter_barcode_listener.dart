@@ -37,7 +37,7 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   bool _handlerRegistered = false;
   bool _isCompletingScan = false;
 
-  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 600);
+  static const Duration _sameBarcodeCooldown = Duration(milliseconds: 400);
 
   @override
   void initState() {
