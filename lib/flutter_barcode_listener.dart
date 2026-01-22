@@ -37,7 +37,7 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   int _lastBarcodeHash = 0;
   int _lastBarcodeTimeMs = 0;
 
-  static const int _sameBarcodeCooldownMs = 10;
+  static const int _sameBarcodeCooldownMs = 25;
 
   @override
   void initState() {
