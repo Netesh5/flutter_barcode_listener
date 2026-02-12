@@ -33,7 +33,6 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
   String? _lastBarcode;
   DateTime? _lastBarcodeTime;
 
-  bool _shiftPressed = false;
   bool _handlerRegistered = false;
   bool _isCompletingScan = false;
   DateTime? _lastEnterKeyTime;
@@ -73,14 +72,14 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
       return false;
     }
 
-    if (event.logicalKey == LogicalKeyboardKey.shiftLeft ||
-        event.logicalKey == LogicalKeyboardKey.shiftRight) {
-      _shiftPressed = true;
-      return false;
-    }
+    // Use the actual typed character from the event so that
+    // shifted characters like #, @, etc. are captured correctly.
+    final String? character = event.character;
+    if (character == null || character.isEmpty) return false;
 
-    final keyId = event.logicalKey.keyId;
-    if (keyId < 0x20 || keyId > 0x7E) return false;
+    final int codeUnit = character.codeUnitAt(0);
+    // Filter out non-printable control characters
+    if (codeUnit < 0x20) return false;
 
     final now = DateTime.now();
 
@@ -91,12 +90,11 @@ class _BarcodeKeyboardListenerState extends State<BarcodeKeyboardListener> {
 
     _lastCharTime = now;
 
-    String char = String.fromCharCode(keyId);
-    if (_shiftPressed && widget.caseSensitive) {
-      char = char.toUpperCase();
+    String char = character;
+    if (!widget.caseSensitive) {
+      char = char.toLowerCase();
     }
 
-    _shiftPressed = false;
     _buffer.add(char);
 
     return false;
